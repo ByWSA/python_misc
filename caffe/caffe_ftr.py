@@ -110,18 +110,20 @@ def extract_feature(network_proto_path,
     #network_proto_path, network_model_path = network_path
 
     net = caffe.Classifier(network_proto_path, network_model_path)
-    net.set_phase_test()
+    # net.set_phase_test()
 
-    net.set_mode_gpu()
+    caffe.set_mode_gpu()
 
     # input preprocessing: 'data' is the name of the input blob == net.inputs[0]
     #net.set_mean('data', caffe_root + 'python/caffe/imagenet/ilsvrc_2012_mean.npy')  # ImageNet mean
-    net.set_mean('data', data_mean)
+    if data_mean is None:
+        data_mean = np.zeros(1)
+    net.transformer.set_mean('data', data_mean)
     if not image_as_grey:
-        net.set_channel_swap('data', (2,1,0))  # the reference model has channels in BGR order instead of RGB
+        net.transformer.set_channel_swap('data', (2,1,0))  # the reference model has channels in BGR order instead of RGB
 
     #net.set_input_scale('data', 256)  # the reference model operates on images in [0,255] range instead of [0,1]
-    net.set_input_scale('data', 1)
+    net.transformer.set_input_scale('data', 1)
 
     #img_list = [caffe.io.load_image(p) for p in image_file_list]
 
@@ -139,7 +141,13 @@ def extract_feature(network_proto_path,
     #exit()
 
     #params = OrderedDict( [(k, (v[0].data,v[1].data)) for k, v in net.params.items()])
-    features_shape = (len(image_list), shp[1], shp[2], shp[3])
+    if len(shp) is 2:
+        features_shape = (len(image_list), shp[1])
+    elif len(shp) is 3:
+        features_shape = (len(image_list), shp[1], shp[2])
+    elif len(shp) is 4:
+        features_shape = (len(image_list), shp[1], shp[2], shp[3])
+
     features = np.empty(features_shape, dtype='float32', order='C')
     img_batch = []
     for cnt, path in zip(range(features_shape[0]), image_list):
@@ -180,7 +188,7 @@ def extract_feature(network_proto_path,
 
             #print blobs[layer_name][0,:,:,:]
             # items of blobs are references, must make copy!
-            features[cnt-len(img_batch)+1:cnt+1, :,:,:] = blobs[layer_name][0:len(img_batch),:,:,:].copy()
+            features[cnt-len(img_batch)+1:cnt+1] = blobs[layer_name][0:len(img_batch)].copy()
             img_batch = []
 
         #features.append(blobs[layer_name][0,:,:,:].copy())
@@ -200,7 +208,7 @@ def extract_features_to_mat(network_proto_path, network_model_path, data_mean,
     ftr = extract_feature(network_proto_path, network_model_path,
                           img_list, data_mean, layer_name, image_as_grey)
     #print ftr.shape
-    if ftr.shape[3]==1 and ftr.shape[2]==1:
+    if ftr.ndim==4 and ftr.shape[3]==1 and ftr.shape[2]==1:
         ftr = ftr[:,:,0,0]
     #print ftr.shape
     #labels = np.asarray(labels, dtype='float32')
@@ -408,7 +416,7 @@ def main(argv):
             print '    save_file: the file path to save features, better to ends with .mat'
             exit()
         start_time = time.time()
-        extract_features_to_mat(argv[0], argv[1], None, argv[2], argv[3], argv[4], argv[5])
+        extract_features_to_mat(argv[0], argv[1], None, argv[2], argv[3], argv[4], argv[5], True)
         end_time = time.time()
         print 'time used: %f s\n' % (end_time - start_time,)
         exit()
